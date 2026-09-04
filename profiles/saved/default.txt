@@ -1,0 +1,5 @@
+- Evaluate with balanced criteria across all dimensions
+- No strong bias toward any particular style
+- Reward clean, professional design
+- Penalize broken layouts, overlapping elements, or unreadable text
+- Reward proper use of whitespace and visual hierarchy
