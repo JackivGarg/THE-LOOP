@@ -32,6 +32,7 @@ def _call_code_updater(current_html: str, fix_instruction: str) -> str:
         max_completion_tokens=settings.max_completion_tokens,
         temperature=settings.temperature,
         top_p=settings.top_p,
+        reasoning_effort=settings.reasoning_effort,
     )
     return response.choices[0].message.content
 

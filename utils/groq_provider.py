@@ -36,7 +36,8 @@ class CompletionSettings:
     temperature: float
     max_completion_tokens: int
     top_p: float | None = None
-    requires_json_mode: bool = False
+    reasoning_effort: str | None = None
+    requires_strict_json_schema: bool = False
 
 
 @dataclass(frozen=True)
@@ -61,24 +62,25 @@ class ModelCapabilities:
     """Capabilities used to validate a model before a task is dispatched."""
 
     supports_json_mode: bool
+    supports_strict_json_schema: bool
 
 
 # These are the production defaults recommended by Groq after the Llama 3.x
 # retirement. Environment variables always take precedence over these values.
 DEFAULT_MODELS = ModelConfig(
-    planner="openai/gpt-oss-120b",
-    code_writer="openai/gpt-oss-120b",
-    code_updater="openai/gpt-oss-120b",
-    rater="openai/gpt-oss-120b",
+    planner="openai/gpt-oss-20b",
+    code_writer="openai/gpt-oss-20b",
+    code_updater="openai/gpt-oss-20b",
+    rater="openai/gpt-oss-20b",
     criteria_updater="openai/gpt-oss-20b",
 )
 
 MODEL_CAPABILITIES: dict[str, ModelCapabilities] = {
-    "openai/gpt-oss-20b": ModelCapabilities(supports_json_mode=True),
-    "openai/gpt-oss-120b": ModelCapabilities(supports_json_mode=True),
-    "qwen/qwen3.6-27b": ModelCapabilities(supports_json_mode=True),
-    "groq/compound": ModelCapabilities(supports_json_mode=True),
-    "groq/compound-mini": ModelCapabilities(supports_json_mode=True),
+    "openai/gpt-oss-20b": ModelCapabilities(supports_json_mode=True, supports_strict_json_schema=True),
+    "openai/gpt-oss-120b": ModelCapabilities(supports_json_mode=True, supports_strict_json_schema=True),
+    "qwen/qwen3.6-27b": ModelCapabilities(supports_json_mode=True, supports_strict_json_schema=False),
+    "groq/compound": ModelCapabilities(supports_json_mode=True, supports_strict_json_schema=False),
+    "groq/compound-mini": ModelCapabilities(supports_json_mode=True, supports_strict_json_schema=False),
 }
 
 
@@ -129,11 +131,21 @@ def load_model_config() -> ModelConfig:
 def get_completion_settings(task: TaskName) -> CompletionSettings:
     """Return validated generation limits and sampling parameters for a task."""
     defaults: dict[TaskName, CompletionSettings] = {
-        "planner": CompletionSettings(temperature=0.5, max_completion_tokens=2048, requires_json_mode=True),
-        "code_writer": CompletionSettings(temperature=0.7, max_completion_tokens=5000, top_p=0.8),
-        "code_updater": CompletionSettings(temperature=0.7, max_completion_tokens=5000, top_p=0.8),
-        "rater": CompletionSettings(temperature=0.3, max_completion_tokens=512, requires_json_mode=True),
-        "criteria_updater": CompletionSettings(temperature=0.3, max_completion_tokens=1024, requires_json_mode=True),
+        "planner": CompletionSettings(
+            temperature=0.2, max_completion_tokens=1024, reasoning_effort="low", requires_strict_json_schema=True
+        ),
+        "code_writer": CompletionSettings(
+            temperature=0.6, max_completion_tokens=5000, top_p=0.8, reasoning_effort="low"
+        ),
+        "code_updater": CompletionSettings(
+            temperature=0.5, max_completion_tokens=5000, top_p=0.8, reasoning_effort="low"
+        ),
+        "rater": CompletionSettings(
+            temperature=0.1, max_completion_tokens=512, reasoning_effort="low", requires_strict_json_schema=True
+        ),
+        "criteria_updater": CompletionSettings(
+            temperature=0.1, max_completion_tokens=512, reasoning_effort="low", requires_strict_json_schema=True
+        ),
     }
     default = defaults[task]
     prefix = task.upper()
@@ -141,7 +153,8 @@ def get_completion_settings(task: TaskName) -> CompletionSettings:
         temperature=_temperature(f"{prefix}_TEMPERATURE", default.temperature),
         max_completion_tokens=_positive_int(f"{prefix}_MAX_COMPLETION_TOKENS", default.max_completion_tokens),
         top_p=default.top_p,
-        requires_json_mode=default.requires_json_mode,
+        reasoning_effort=default.reasoning_effort,
+        requires_strict_json_schema=default.requires_strict_json_schema,
     )
 
 
@@ -180,7 +193,7 @@ def get_groq_client() -> Groq:
     return _build_client(config.api_key, config.timeout_seconds)
 
 
-def validate_model_capabilities(model: str, *, requires_json_mode: bool) -> None:
+def validate_model_capabilities(model: str, *, requires_strict_json_schema: bool) -> None:
     """Fail early when a known configured model cannot satisfy a task contract.
 
     Unknown models remain permitted to support future Groq catalog additions and
@@ -189,13 +202,74 @@ def validate_model_capabilities(model: str, *, requires_json_mode: bool) -> None
     if not model or not model.strip():
         raise ValueError("Configured Groq model name cannot be empty.")
     capabilities = MODEL_CAPABILITIES.get(model)
-    if requires_json_mode and capabilities and not capabilities.supports_json_mode:
-        raise ValueError(f"Model {model!r} does not support the JSON mode required by this task.")
+    if requires_strict_json_schema and capabilities and not capabilities.supports_strict_json_schema:
+        raise ValueError(f"Model {model!r} does not support strict JSON Schema required by this task.")
 
 
 def get_task_config(task: TaskName) -> tuple[str, CompletionSettings]:
     """Resolve and validate the model and generation settings for one task."""
     model = getattr(load_model_config(), task)
     settings = get_completion_settings(task)
-    validate_model_capabilities(model, requires_json_mode=settings.requires_json_mode)
+    validate_model_capabilities(model, requires_strict_json_schema=settings.requires_strict_json_schema)
     return model, settings
+
+
+def get_structured_response_format(task: TaskName) -> dict:
+    """Return the strict Groq JSON Schema contract for a structured-output task."""
+    schemas: dict[TaskName, dict] = {
+        "planner": {
+            "name": "website_plan",
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "action": {"type": "string", "enum": ["write", "update"]},
+                    "instruction": {"type": "string"},
+                },
+                "required": ["action", "instruction"],
+                "additionalProperties": False,
+            },
+        },
+        "rater": {
+            "name": "website_rating",
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "scores": {
+                        "type": "object",
+                        "properties": {
+                            "layout": {"type": "integer", "minimum": 0, "maximum": 10},
+                            "typography": {"type": "integer", "minimum": 0, "maximum": 10},
+                            "responsiveness": {"type": "integer", "minimum": 0, "maximum": 10},
+                            "visual_design": {"type": "integer", "minimum": 0, "maximum": 10},
+                            "description_match": {"type": "integer", "minimum": 0, "maximum": 10},
+                        },
+                        "required": ["layout", "typography", "responsiveness", "visual_design", "description_match"],
+                        "additionalProperties": False,
+                    },
+                    "deductions": {"type": "string"},
+                },
+                "required": ["scores", "deductions"],
+                "additionalProperties": False,
+            },
+        },
+        "criteria_updater": {
+            "name": "updated_rating_criteria",
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "updated_criteria": {"type": "string"},
+                    "changelog": {"type": "string"},
+                },
+                "required": ["updated_criteria", "changelog"],
+                "additionalProperties": False,
+            },
+        },
+        "code_writer": {},
+        "code_updater": {},
+    }
+    if not schemas[task]:
+        raise ValueError(f"Task {task!r} does not use structured output.")
+    return {"type": "json_schema", "json_schema": schemas[task]}

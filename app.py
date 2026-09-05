@@ -6,7 +6,6 @@ and iterative AI generation loop.
 
 import os
 import sys
-import time
 import base64
 
 import streamlit as st
@@ -80,17 +79,6 @@ st.markdown("""
         color: #cbd5e1;
         max-height: 150px;
         overflow-y: auto;
-    }
-    
-    /* Cooldown timer */
-    .cooldown {
-        background: rgba(99,102,241,0.15);
-        border: 1px solid rgba(99,102,241,0.3);
-        border-radius: 10px;
-        padding: 0.8rem;
-        text-align: center;
-        color: #a5b4fc;
-        font-size: 0.95rem;
     }
     
     /* Status indicator */
@@ -294,7 +282,6 @@ with left_col:
     reward_placeholder = st.empty()
     graph_placeholder = st.empty()
     deductions_placeholder = st.empty()
-    cooldown_placeholder = st.empty()
 
     # Show current state if we have data
     if state["reward_history"]:
@@ -444,18 +431,6 @@ if generate_clicked and title.strip():
                         f'<div class="deductions-box">💬 <b>Rater says:</b><br>{state["last_deductions"]}</div>',
                         unsafe_allow_html=True,
                     )
-
-            # ── Pace for Groq TPM (30s cooldown) ──
-            if not should_stop(state):
-                for remaining in range(30, 0, -1):
-                    with left_col:
-                        cooldown_placeholder.markdown(
-                            f'<div class="cooldown">⏳ Next iteration in {remaining}s... (rate limit pacing)</div>',
-                            unsafe_allow_html=True,
-                        )
-                    time.sleep(1)
-                with left_col:
-                    cooldown_placeholder.empty()
 
         # ── Generation Complete ──
         state["generation_complete"] = True

@@ -15,6 +15,7 @@ Your job is to generate a COMPLETE, PRODUCTION-QUALITY single-file HTML website.
 10. Generate realistic placeholder content — no "Lorem ipsum", write real text that matches the user's description
 11. Use modern design patterns: gradients, shadows, rounded corners, proper spacing
 12. Ensure proper heading hierarchy: one h1, then h2s for sections, h3s for subsections
+13. Keep the implementation concise enough to complete within 5,500 tokens. Prefer 4–6 strong sections and avoid repetitive markup or oversized inline assets.
 
 ## OUTPUT
 Just the complete HTML file. Nothing else. Start with <!DOCTYPE html> and end with </html>.

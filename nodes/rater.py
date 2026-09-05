@@ -8,7 +8,7 @@ import os
 import json
 
 from profiles.profile_manager import get_composed_rater_prompt
-from utils.groq_provider import get_groq_client, get_task_config
+from utils.groq_provider import get_groq_client, get_structured_response_format, get_task_config
 from utils.retry import call_with_retry
 
 # Expected keys in the rater's JSON output
@@ -53,9 +53,10 @@ def _call_rater(system_prompt: str, html_code: str) -> dict:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": f"Rate the following HTML website code:\n\n{html_code}"},
         ],
-        response_format={"type": "json_object"},
+        response_format=get_structured_response_format("rater"),
         temperature=settings.temperature,
         max_completion_tokens=settings.max_completion_tokens,
+        reasoning_effort=settings.reasoning_effort,
     )
     raw_text = response.choices[0].message.content
     try:

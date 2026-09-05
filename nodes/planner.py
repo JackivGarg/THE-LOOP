@@ -10,7 +10,7 @@ import os
 import json
 
 from profiles.profile_manager import load_profile
-from utils.groq_provider import get_groq_client, get_task_config
+from utils.groq_provider import get_groq_client, get_structured_response_format, get_task_config
 from utils.retry import call_with_retry
 
 # Load planner system prompt
@@ -79,9 +79,10 @@ def _call_planner(user_message: str) -> dict:
             {"role": "system", "content": _SYSTEM_PROMPT},
             {"role": "user", "content": user_message},
         ],
-        response_format={"type": "json_object"},
+        response_format=get_structured_response_format("planner"),
         temperature=settings.temperature,
         max_completion_tokens=settings.max_completion_tokens,
+        reasoning_effort=settings.reasoning_effort,
     )
     raw_text = response.choices[0].message.content
     try:

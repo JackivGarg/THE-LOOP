@@ -9,6 +9,7 @@ from utils.groq_provider import (
     ModelCapabilities,
     get_completion_settings,
     get_retry_config,
+    get_structured_response_format,
     get_task_config,
     load_model_config,
     validate_model_capabilities,
@@ -20,35 +21,37 @@ class GroqProviderTests(unittest.TestCase):
         with patch.dict(os.environ, {}, clear=True):
             config = load_model_config()
 
-        self.assertEqual(config.planner, "openai/gpt-oss-120b")
-        self.assertEqual(config.code_writer, "openai/gpt-oss-120b")
+        self.assertEqual(config.planner, "openai/gpt-oss-20b")
+        self.assertEqual(config.code_writer, "openai/gpt-oss-20b")
         self.assertEqual(config.criteria_updater, "openai/gpt-oss-20b")
 
     def test_environment_overrides_task_model_and_limits(self):
         overrides = {
-            "PLANNER_MODEL": "qwen/qwen3.6-27b",
-            "PLANNER_TEMPERATURE": "0.2",
-            "PLANNER_MAX_COMPLETION_TOKENS": "1024",
+            "CODE_WRITER_MODEL": "qwen/qwen3.6-27b",
+            "CODE_WRITER_TEMPERATURE": "0.2",
+            "CODE_WRITER_MAX_COMPLETION_TOKENS": "1024",
         }
         with patch.dict(os.environ, overrides, clear=False):
-            model, settings = get_task_config("planner")
+            model, settings = get_task_config("code_writer")
 
         self.assertEqual(model, "qwen/qwen3.6-27b")
         self.assertEqual(settings.temperature, 0.2)
         self.assertEqual(settings.max_completion_tokens, 1024)
-        self.assertTrue(settings.requires_json_mode)
+        self.assertEqual(settings.reasoning_effort, "low")
 
     def test_invalid_generation_limit_is_rejected(self):
         with patch.dict(os.environ, {"RATER_MAX_COMPLETION_TOKENS": "0"}, clear=False):
             with self.assertRaises(ValueError):
                 get_completion_settings("rater")
 
-    def test_known_model_without_json_mode_is_rejected(self):
-        model_name = "example/no-json-mode"
-        MODEL_CAPABILITIES[model_name] = ModelCapabilities(supports_json_mode=False)
+    def test_known_model_without_strict_json_schema_is_rejected(self):
+        model_name = "example/no-strict-json-schema"
+        MODEL_CAPABILITIES[model_name] = ModelCapabilities(
+            supports_json_mode=True, supports_strict_json_schema=False
+        )
         try:
             with self.assertRaises(ValueError):
-                validate_model_capabilities(model_name, requires_json_mode=True)
+                validate_model_capabilities(model_name, requires_strict_json_schema=True)
         finally:
             del MODEL_CAPABILITIES[model_name]
 
@@ -64,6 +67,13 @@ class GroqProviderTests(unittest.TestCase):
         self.assertEqual(policy.max_attempts, 5)
         self.assertEqual(policy.base_delay_seconds, 1.5)
         self.assertEqual(policy.max_delay_seconds, 12.0)
+
+    def test_structured_task_uses_strict_schema(self):
+        response_format = get_structured_response_format("rater")
+
+        self.assertEqual(response_format["type"], "json_schema")
+        self.assertTrue(response_format["json_schema"]["strict"])
+        self.assertEqual(response_format["json_schema"]["schema"]["required"], ["scores", "deductions"])
 
 
 if __name__ == "__main__":

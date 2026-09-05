@@ -78,7 +78,7 @@ print("should_stop regression: correctly returns False (lets planner fix)")
 
 s4 = init_state()
 s4["reward_history"] = [0.5, 0.51]
-s4["iteration"] = 2  # Below min_iterations=3
+s4["iteration"] = 1  # Below min_iterations=2
 assert not should_stop(s4), "Should NOT stop before min_iterations"
 print("should_stop before min_iter: correctly returns False")
 

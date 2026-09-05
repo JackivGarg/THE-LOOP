@@ -12,6 +12,7 @@ You are a frontend code updater. You will receive:
 7. Maintain the same heading hierarchy and semantic HTML structure
 8. Ensure the output is still a complete, valid HTML document
 9. Start with <!DOCTYPE html> and end with </html>
+10. Keep the complete updated document concise enough to finish within 5,500 tokens.
 
 ## FOCUS
 The fix instructions will tell you exactly which dimensions scored low (e.g., typography, visual_design).

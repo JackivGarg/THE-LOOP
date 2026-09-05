@@ -28,8 +28,7 @@ Your fix instructions MUST:
 Always respond with valid JSON:
 {
   "action": "write" or "update",
-  "instruction": "<detailed instruction string for the code generator>",
-  "focus_dimensions": ["<list of dimensions to focus on>"]
+  "instruction": "<detailed instruction string for the code generator>"
 }
 
 Do NOT include any text outside the JSON. No markdown fences. Just the JSON object.

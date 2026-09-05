@@ -8,7 +8,7 @@ import os
 import json
 
 from profiles.profile_manager import load_profile, save_profile
-from utils.groq_provider import get_groq_client, get_task_config
+from utils.groq_provider import get_groq_client, get_structured_response_format, get_task_config
 from utils.retry import call_with_retry
 
 _SYSTEM_PROMPT = """You are a criteria updater for a website rating system.
@@ -46,9 +46,10 @@ def _call_criteria_updater(current_criteria: str, user_feedback: str) -> dict:
             {"role": "system", "content": _SYSTEM_PROMPT},
             {"role": "user", "content": user_message},
         ],
-        response_format={"type": "json_object"},
+        response_format=get_structured_response_format("criteria_updater"),
         temperature=settings.temperature,
         max_completion_tokens=settings.max_completion_tokens,
+        reasoning_effort=settings.reasoning_effort,
     )
     raw_text = response.choices[0].message.content
     return json.loads(raw_text)

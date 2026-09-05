@@ -22,8 +22,8 @@ DEFAULT_STATE = {
     "user_input": {"title": "", "description": ""},
     "active_profile": "default",
     "iteration": 0,
-    "max_iterations": 10,
-    "min_iterations": 3,           # Must run at least 3 before early-exit logic activates
+    "max_iterations": 4,
+    "min_iterations": 2,           # Must run at least 2 before early-exit logic activates
     "quality_threshold": 0.82,
     "early_exit_delta": 0.02,      # Stop if improvement < this between consecutive iterations
     "current_code": None,          # Raw HTML string, updated every iteration
