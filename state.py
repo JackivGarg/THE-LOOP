@@ -36,6 +36,7 @@ DEFAULT_STATE = {
     "generation_complete": False,
     "is_running": False,           # Guards against double-click on Generate
     "output_path": None,           # Path to saved .html file in outputs/
+    "llm_request_trace": [],       # bounded raw metadata for the latest LLM calls
 }
 
 

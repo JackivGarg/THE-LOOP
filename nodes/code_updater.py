@@ -7,7 +7,7 @@ Called on iterations 2–10.
 import os
 
 from utils.html_validator import extract_html
-from utils.groq_provider import get_groq_client, get_task_config
+from utils.groq_provider import record_completion_metadata, request_completion
 from utils.retry import call_with_retry
 
 # Load the code updater system prompt
@@ -16,25 +16,19 @@ with open(_PROMPT_PATH, "r", encoding="utf-8") as f:
     _SYSTEM_PROMPT = f.read().strip()
 
 
-def _call_code_updater(current_html: str, fix_instruction: str) -> str:
+def _call_code_updater(current_html: str, fix_instruction: str):
     """Make the actual Groq API call for code updating."""
     user_message = (
         f"## FIX INSTRUCTIONS\n{fix_instruction}\n\n"
         f"## CURRENT HTML CODE\n{current_html}"
     )
-    model, settings = get_task_config("code_updater")
-    response = get_groq_client().chat.completions.create(
-        model=model,
-        messages=[
+    return request_completion(
+        "code_updater",
+        [
             {"role": "system", "content": _SYSTEM_PROMPT},
             {"role": "user", "content": user_message},
         ],
-        max_completion_tokens=settings.max_completion_tokens,
-        temperature=settings.temperature,
-        top_p=settings.top_p,
-        reasoning_effort=settings.reasoning_effort,
     )
-    return response.choices[0].message.content
 
 
 def update_code(state: dict) -> dict:
@@ -59,7 +53,9 @@ def update_code(state: dict) -> dict:
         raise ValueError("Cannot update code: no planner_instruction in state")
 
     # Call with retry
-    raw_output = call_with_retry(_call_code_updater, current_html, fix_instruction)
+    completion = call_with_retry(_call_code_updater, current_html, fix_instruction)
+    record_completion_metadata(state, completion)
+    raw_output = completion.content
 
     # Validate and extract HTML
     html = extract_html(raw_output)

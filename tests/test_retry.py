@@ -3,15 +3,12 @@
 import unittest
 from unittest.mock import patch
 
-from utils.groq_provider import RetryConfig
+from utils.groq_provider import MalformedStructuredResponseError, RetryConfig
 from utils.retry import call_with_retry
 
 
-class JsonValidationError(Exception):
-    status_code = 400
-
-    def __str__(self) -> str:
-        return "Error code: 400 - {'code': 'json_validate_failed'}"
+class JsonValidationError(MalformedStructuredResponseError):
+    pass
 
 
 class RetryTests(unittest.TestCase):
@@ -22,7 +19,7 @@ class RetryTests(unittest.TestCase):
             nonlocal calls
             calls += 1
             if calls == 1:
-                raise JsonValidationError()
+                raise JsonValidationError("json validation failed")
             return "success"
 
         with patch("utils.retry.time.sleep") as sleep:

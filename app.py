@@ -30,6 +30,7 @@ from profiles.profile_manager import (
     delete_profile,
 )
 from utils.reward_graph import build_reward_graph
+from utils.groq_provider import get_provider_config
 
 # ─── Page Config ───────────────────────────────────────────────────────────────
 
@@ -39,6 +40,12 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed",
 )
+
+try:
+    get_provider_config()
+except RuntimeError as error:
+    st.error(f"AI generation is unavailable: {error}")
+    st.stop()
 
 # ─── Custom CSS ────────────────────────────────────────────────────────────────
 
@@ -450,6 +457,9 @@ if generate_clicked and title.strip():
 
     except Exception as e:
         state["is_running"] = False
+        metadata = getattr(e, "metadata", None)
+        if metadata is not None:
+            state.setdefault("llm_request_trace", []).append(metadata.as_dict())
         st.session_state.gen_state = state
         with left_col:
             status_placeholder.markdown(

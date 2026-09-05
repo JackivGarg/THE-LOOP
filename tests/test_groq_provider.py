@@ -8,6 +8,7 @@ from utils.groq_provider import (
     MODEL_CAPABILITIES,
     ModelCapabilities,
     get_completion_settings,
+    get_provider_config,
     get_retry_config,
     get_structured_response_format,
     get_task_config,
@@ -74,6 +75,11 @@ class GroqProviderTests(unittest.TestCase):
         self.assertEqual(response_format["type"], "json_schema")
         self.assertTrue(response_format["json_schema"]["strict"])
         self.assertEqual(response_format["json_schema"]["schema"]["required"], ["scores", "deductions"])
+
+    def test_missing_api_key_has_a_clear_startup_error(self):
+        with patch.dict(os.environ, {}, clear=True):
+            with self.assertRaisesRegex(RuntimeError, "GROQ_API_KEY is not configured"):
+                get_provider_config()
 
 
 if __name__ == "__main__":

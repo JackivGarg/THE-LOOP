@@ -5,68 +5,20 @@ Returns structured scores + deductions string.
 """
 
 import os
-import json
-
 from profiles.profile_manager import get_composed_rater_prompt
-from utils.groq_provider import get_groq_client, get_structured_response_format, get_task_config
+from utils.groq_provider import record_completion_metadata, request_structured_completion
 from utils.retry import call_with_retry
 
-# Expected keys in the rater's JSON output
-_REQUIRED_SCORE_KEYS = {"layout", "typography", "responsiveness", "visual_design", "description_match"}
 
-
-def _validate_rating(data: dict) -> dict:
-    """
-    Validate and normalize the rater's JSON output.
-    Ensures all score keys exist and are integers 0-10.
-    Returns a clean dict with 'scores' and 'deductions'.
-    """
-    scores = data.get("scores", {})
-
-    # Ensure all required keys exist with valid integer values 0-10
-    clean_scores = {}
-    for key in _REQUIRED_SCORE_KEYS:
-        val = scores.get(key, 5)  # Default to 5 if missing
-        try:
-            val = int(val)
-            val = max(0, min(10, val))  # Clamp to 0-10
-        except (TypeError, ValueError):
-            val = 5
-        clean_scores[key] = val
-
-    deductions = data.get("deductions", "No specific deductions provided.")
-    if not isinstance(deductions, str):
-        deductions = str(deductions)
-
-    return {
-        "scores": clean_scores,
-        "deductions": deductions,
-    }
-
-
-def _call_rater(system_prompt: str, html_code: str) -> dict:
+def _call_rater(system_prompt: str, html_code: str):
     """Make the actual Groq API call for rating."""
-    model, settings = get_task_config("rater")
-    response = get_groq_client().chat.completions.create(
-        model=model,
-        messages=[
+    return request_structured_completion(
+        "rater",
+        [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": f"Rate the following HTML website code:\n\n{html_code}"},
         ],
-        response_format=get_structured_response_format("rater"),
-        temperature=settings.temperature,
-        max_completion_tokens=settings.max_completion_tokens,
-        reasoning_effort=settings.reasoning_effort,
     )
-    raw_text = response.choices[0].message.content
-    try:
-        return json.loads(raw_text)
-    except (json.JSONDecodeError, TypeError):
-        # If JSON parsing fails, return a default mid-range rating
-        return {
-            "scores": {"layout": 5, "typography": 5, "responsiveness": 5, "visual_design": 5, "description_match": 5},
-            "deductions": f"Rater returned malformed JSON. Raw output: {raw_text[:200]}"
-        }
 
 
 def rate(state: dict) -> dict:
@@ -91,10 +43,9 @@ def rate(state: dict) -> dict:
     system_prompt = get_composed_rater_prompt(profile_name)
 
     # Call with retry for rate-limit resilience
-    raw_rating = call_with_retry(_call_rater, system_prompt, html_code)
-
-    # Validate and normalize
-    clean_rating = _validate_rating(raw_rating)
+    raw_rating, completion = call_with_retry(_call_rater, system_prompt, html_code)
+    record_completion_metadata(state, completion)
+    clean_rating = raw_rating.model_dump()
 
     # Update state
     state["last_rating_json"] = clean_rating

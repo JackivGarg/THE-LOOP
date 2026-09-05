@@ -10,7 +10,7 @@ import os
 import json
 
 from profiles.profile_manager import load_profile
-from utils.groq_provider import get_groq_client, get_structured_response_format, get_task_config
+from utils.groq_provider import record_completion_metadata, request_structured_completion
 from utils.retry import call_with_retry
 
 # Load planner system prompt
@@ -70,26 +70,15 @@ def _build_user_message_iter2plus(state: dict) -> str:
     )
 
 
-def _call_planner(user_message: str) -> dict:
+def _call_planner(user_message: str):
     """Make the actual Groq API call for planning."""
-    model, settings = get_task_config("planner")
-    response = get_groq_client().chat.completions.create(
-        model=model,
-        messages=[
+    return request_structured_completion(
+        "planner",
+        [
             {"role": "system", "content": _SYSTEM_PROMPT},
             {"role": "user", "content": user_message},
         ],
-        response_format=get_structured_response_format("planner"),
-        temperature=settings.temperature,
-        max_completion_tokens=settings.max_completion_tokens,
-        reasoning_effort=settings.reasoning_effort,
     )
-    raw_text = response.choices[0].message.content
-    try:
-        return json.loads(raw_text)
-    except (json.JSONDecodeError, TypeError):
-        # If LLM returns malformed JSON, wrap the raw text as an instruction
-        return {"action": "write", "instruction": raw_text, "focus_dimensions": []}
 
 
 def plan(state: dict) -> dict:
@@ -114,15 +103,10 @@ def plan(state: dict) -> dict:
         user_message = _build_user_message_iter2plus(state)
 
     # Call with retry
-    planner_output = call_with_retry(_call_planner, user_message)
+    planner_output, completion = call_with_retry(_call_planner, user_message)
+    record_completion_metadata(state, completion)
 
-    # Extract the instruction text
-    instruction = planner_output.get("instruction", "")
-    if not instruction:
-        # Fallback: stringify the entire planner output as instruction
-        instruction = json.dumps(planner_output, indent=2)
-
-    state["planner_instruction"] = instruction
-    state["planner_focus"] = planner_output.get("focus_dimensions", [])
+    state["planner_instruction"] = planner_output.instruction
+    state["planner_focus"] = []
 
     return state

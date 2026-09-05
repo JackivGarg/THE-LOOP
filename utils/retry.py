@@ -6,7 +6,23 @@ Does NOT retry 413 (request too large) — those need prompt/token reduction, no
 
 import time
 
-from utils.groq_provider import RetryConfig, get_retry_config
+from utils.groq_provider import (
+    MalformedStructuredResponseError,
+    RetryConfig,
+    RetryableLLMError,
+    get_retry_config,
+)
+
+
+class RetryExhaustedError(RuntimeError):
+    """Raised after all retryable attempts fail while preserving debug metadata."""
+
+    def __init__(self, attempts: int, last_exception: RetryableLLMError):
+        super().__init__(
+            f"Max attempts ({attempts}) exceeded on a retryable Groq request. "
+            f"Last error: {last_exception}"
+        )
+        self.metadata = last_exception.metadata
 
 
 def call_with_retry(fn, *args, retry_config: RetryConfig | None = None, **kwargs):
@@ -30,8 +46,8 @@ def call_with_retry(fn, *args, retry_config: RetryConfig | None = None, **kwargs
         The return value of fn on success
     
     Raises:
-        RuntimeError: If all retries are exhausted
-        Exception: Any non-429 error from fn
+        RetryExhaustedError: If all retryable attempts are exhausted.
+        PermanentLLMError: For non-retryable provider/configuration errors.
     """
     policy = retry_config or get_retry_config()
     last_exception = None
@@ -39,49 +55,17 @@ def call_with_retry(fn, *args, retry_config: RetryConfig | None = None, **kwargs
     for attempt in range(policy.max_attempts):
         try:
             return fn(*args, **kwargs)
-        except Exception as e:
+        except RetryableLLMError as e:
             last_exception = e
-            error_str = str(e)
-
-            # Check for Groq SDK errors with .status_code attribute
-            status_code = getattr(e, "status_code", None)
-            if status_code is None and hasattr(e, "response"):
-                status_code = getattr(e.response, "status_code", None)
-
-            # 413 = Request too large — NEVER retry, the request itself is the problem
-            if status_code == 413 or "413" in error_str:
-                raise
-
-            is_rate_limited = status_code == 429 or "429" in error_str
-            is_json_validation_failure = status_code == 400 and "json_validate_failed" in error_str
 
             # Do not wait after the final failed attempt.
             if attempt == policy.max_attempts - 1:
                 break
 
-            # 429 = rate limited — retry with the provider-supplied or exponential delay.
-            if is_rate_limited:
-                retry_after = None
-                if hasattr(e, "response") and hasattr(e.response, "headers"):
-                    retry_after = e.response.headers.get("retry-after")
-                try:
-                    wait_time = float(retry_after) if retry_after else policy.base_delay_seconds * (2 ** attempt)
-                except (TypeError, ValueError):
-                    wait_time = policy.base_delay_seconds * (2 ** attempt)
-                wait_time = min(wait_time, policy.max_delay_seconds)
-                time.sleep(wait_time)
-                continue
-
-            # A malformed best-effort JSON generation can succeed on the next sample.
-            if is_json_validation_failure:
+            if isinstance(e, MalformedStructuredResponseError):
                 wait_time = min(0.25 * (2 ** attempt), 1.0)
-                time.sleep(wait_time)
-                continue
+            else:
+                wait_time = min(policy.base_delay_seconds * (2 ** attempt), policy.max_delay_seconds)
+            time.sleep(wait_time)
 
-            # Any other error → raise immediately
-            raise
-
-    raise RuntimeError(
-        f"Max attempts ({policy.max_attempts}) exceeded on Groq API call. "
-        f"Last error: {last_exception}"
-    )
+    raise RetryExhaustedError(policy.max_attempts, last_exception)
