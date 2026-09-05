@@ -1,6 +1,6 @@
 """
 Planner Node — the brain of the generation loop.
-Uses Llama 3.3 70B Versatile via Groq.
+Uses the centrally configured Groq planner model.
 
 Iteration 1: Creates a site plan from user input + profile criteria.
 Iteration 2+: Creates targeted fix instructions from rater feedback.
@@ -9,16 +9,9 @@ Iteration 2+: Creates targeted fix instructions from rater feedback.
 import os
 import json
 
-from groq import Groq
-from dotenv import load_dotenv
-
 from profiles.profile_manager import load_profile
+from utils.groq_provider import get_groq_client, get_task_config
 from utils.retry import call_with_retry
-
-load_dotenv()
-
-_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
-_MODEL = "llama-3.3-70b-versatile"
 
 # Load planner system prompt
 _PROMPT_PATH = os.path.join(os.path.dirname(__file__), "..", "prompts", "planner_prompt.txt")
@@ -79,15 +72,16 @@ def _build_user_message_iter2plus(state: dict) -> str:
 
 def _call_planner(user_message: str) -> dict:
     """Make the actual Groq API call for planning."""
-    response = _client.chat.completions.create(
-        model=_MODEL,
+    model, settings = get_task_config("planner")
+    response = get_groq_client().chat.completions.create(
+        model=model,
         messages=[
             {"role": "system", "content": _SYSTEM_PROMPT},
             {"role": "user", "content": user_message},
         ],
         response_format={"type": "json_object"},
-        temperature=0.5,
-        max_completion_tokens=2048,
+        temperature=settings.temperature,
+        max_completion_tokens=settings.max_completion_tokens,
     )
     raw_text = response.choices[0].message.content
     try:

@@ -1,22 +1,15 @@
 """
 Criteria Updater Node — updates the [EDITABLE] block of a profile based on user feedback.
-Uses Llama 3.1 8B Instant via Groq (simplest task, fastest model).
+Uses the centrally configured Groq criteria-update model.
 Called only when user submits preference feedback after generation.
 """
 
 import os
 import json
 
-from groq import Groq
-from dotenv import load_dotenv
-
 from profiles.profile_manager import load_profile, save_profile
+from utils.groq_provider import get_groq_client, get_task_config
 from utils.retry import call_with_retry
-
-load_dotenv()
-
-_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
-_MODEL = "llama-3.1-8b-instant"
 
 _SYSTEM_PROMPT = """You are a criteria updater for a website rating system.
 
@@ -46,15 +39,16 @@ def _call_criteria_updater(current_criteria: str, user_feedback: str) -> dict:
         f"## CURRENT CRITERIA\n{current_criteria}\n\n"
         f"## USER FEEDBACK\n{user_feedback}"
     )
-    response = _client.chat.completions.create(
-        model=_MODEL,
+    model, settings = get_task_config("criteria_updater")
+    response = get_groq_client().chat.completions.create(
+        model=model,
         messages=[
             {"role": "system", "content": _SYSTEM_PROMPT},
             {"role": "user", "content": user_message},
         ],
         response_format={"type": "json_object"},
-        temperature=0.3,
-        max_completion_tokens=1024,
+        temperature=settings.temperature,
+        max_completion_tokens=settings.max_completion_tokens,
     )
     raw_text = response.choices[0].message.content
     return json.loads(raw_text)

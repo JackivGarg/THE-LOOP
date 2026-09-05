@@ -1,21 +1,14 @@
 """
 Code Updater Node — makes surgical fixes to existing HTML based on rater feedback.
-Uses Qwen3 32B via Groq with thinking mode disabled.
+Uses the centrally configured Groq code-update model.
 Called on iterations 2–10.
 """
 
 import os
 
-from groq import Groq
-from dotenv import load_dotenv
-
 from utils.html_validator import extract_html
+from utils.groq_provider import get_groq_client, get_task_config
 from utils.retry import call_with_retry
-
-load_dotenv()
-
-_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
-_MODEL = "llama-3.3-70b-versatile"
 
 # Load the code updater system prompt
 _PROMPT_PATH = os.path.join(os.path.dirname(__file__), "..", "prompts", "code_updater_prompt.txt")
@@ -29,15 +22,16 @@ def _call_code_updater(current_html: str, fix_instruction: str) -> str:
         f"## FIX INSTRUCTIONS\n{fix_instruction}\n\n"
         f"## CURRENT HTML CODE\n{current_html}"
     )
-    response = _client.chat.completions.create(
-        model=_MODEL,
+    model, settings = get_task_config("code_updater")
+    response = get_groq_client().chat.completions.create(
+        model=model,
         messages=[
             {"role": "system", "content": _SYSTEM_PROMPT},
             {"role": "user", "content": user_message},
         ],
-        max_completion_tokens=5000,
-        temperature=0.7,
-        top_p=0.8,
+        max_completion_tokens=settings.max_completion_tokens,
+        temperature=settings.temperature,
+        top_p=settings.top_p,
     )
     return response.choices[0].message.content
 

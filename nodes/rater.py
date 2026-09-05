@@ -1,22 +1,15 @@
 """
 Rater Node — scores generated HTML across 5 dimensions.
-Uses Llama 3.3 70B Versatile via Groq with JSON mode enforced.
+Uses the centrally configured Groq rater model with JSON mode enforced.
 Returns structured scores + deductions string.
 """
 
 import os
 import json
 
-from groq import Groq
-from dotenv import load_dotenv
-
 from profiles.profile_manager import get_composed_rater_prompt
+from utils.groq_provider import get_groq_client, get_task_config
 from utils.retry import call_with_retry
-
-load_dotenv()
-
-_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
-_MODEL = "llama-3.3-70b-versatile"
 
 # Expected keys in the rater's JSON output
 _REQUIRED_SCORE_KEYS = {"layout", "typography", "responsiveness", "visual_design", "description_match"}
@@ -53,15 +46,16 @@ def _validate_rating(data: dict) -> dict:
 
 def _call_rater(system_prompt: str, html_code: str) -> dict:
     """Make the actual Groq API call for rating."""
-    response = _client.chat.completions.create(
-        model=_MODEL,
+    model, settings = get_task_config("rater")
+    response = get_groq_client().chat.completions.create(
+        model=model,
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": f"Rate the following HTML website code:\n\n{html_code}"},
         ],
         response_format={"type": "json_object"},
-        temperature=0.3,       # Low temperature for consistent scoring
-        max_completion_tokens=512,  # Rating JSON is small
+        temperature=settings.temperature,
+        max_completion_tokens=settings.max_completion_tokens,
     )
     raw_text = response.choices[0].message.content
     try:

@@ -6,8 +6,10 @@ Does NOT retry 413 (request too large) — those need prompt/token reduction, no
 
 import time
 
+from utils.groq_provider import RetryConfig, get_retry_config
 
-def call_with_retry(fn, *args, max_retries: int = 3, **kwargs):
+
+def call_with_retry(fn, *args, retry_config: RetryConfig | None = None, **kwargs):
     """
     Call a function with automatic retry on Groq 429 rate-limit errors.
     
@@ -19,7 +21,7 @@ def call_with_retry(fn, *args, max_retries: int = 3, **kwargs):
     Args:
         fn: The callable to invoke (typically a Groq API call)
         *args: Positional arguments passed to fn
-        max_retries: Maximum number of retry attempts (default 3)
+        retry_config: Shared retry policy. Defaults to the configured Groq policy.
         **kwargs: Keyword arguments passed to fn
     
     Returns:
@@ -29,9 +31,10 @@ def call_with_retry(fn, *args, max_retries: int = 3, **kwargs):
         RuntimeError: If all retries are exhausted
         Exception: Any non-429 error from fn
     """
+    policy = retry_config or get_retry_config()
     last_exception = None
 
-    for attempt in range(max_retries):
+    for attempt in range(policy.max_attempts):
         try:
             return fn(*args, **kwargs)
         except Exception as e:
@@ -52,13 +55,14 @@ def call_with_retry(fn, *args, max_retries: int = 3, **kwargs):
                 retry_after = None
                 if hasattr(e, "response") and hasattr(e.response, "headers"):
                     retry_after = e.response.headers.get("retry-after")
-                wait_time = int(retry_after) if retry_after else (2 ** attempt) + 1
+                wait_time = float(retry_after) if retry_after else policy.base_delay_seconds * (2 ** attempt)
+                wait_time = min(wait_time, policy.max_delay_seconds)
                 time.sleep(wait_time)
                 continue
 
             # Fallback string check for 429 only (not generic "rate_limit" which 413 also contains)
             if "429" in error_str:
-                wait_time = (2 ** attempt) + 1
+                wait_time = min(policy.base_delay_seconds * (2 ** attempt), policy.max_delay_seconds)
                 time.sleep(wait_time)
                 continue
 
@@ -66,6 +70,6 @@ def call_with_retry(fn, *args, max_retries: int = 3, **kwargs):
             raise
 
     raise RuntimeError(
-        f"Max retries ({max_retries}) exceeded on Groq API call. "
+        f"Max attempts ({policy.max_attempts}) exceeded on Groq API call. "
         f"Last error: {last_exception}"
     )
