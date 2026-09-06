@@ -29,8 +29,9 @@ print("Template injection: OK")
 
 # Test compute_overall_reward
 scores = {"layout": 7, "typography": 6, "responsiveness": 8, "visual_design": 5, "description_match": 9}
-reward = compute_overall_reward(scores)
-expected = (7*0.20 + 6*0.20 + 8*0.15 + 5*0.25 + 9*0.20) / 10.0
+reward = compute_overall_reward(scores, deterministic_score=8)
+llm_quality = (7*0.25 + 6*0.25 + 8*0.20 + 5*0.30) / 10.0
+expected = 0.40 * 0.8 + 0.40 * llm_quality + 0.20 * 0.9
 print(f"Reward: {reward} (expected: {round(expected, 4)})")
 assert abs(reward - expected) < 0.001, f"Reward mismatch: {reward} != {expected}"
 print("Reward computation: OK")

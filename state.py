@@ -7,14 +7,13 @@ import uuid
 import copy
 
 
-# Weights for computing overall_reward from individual dimension scores.
-# overall_reward = sum(score * weight) / 10.0  →  produces 0.0–1.0
-REWARD_WEIGHTS = {
-    "layout": 0.20,
-    "typography": 0.20,
-    "responsiveness": 0.15,
-    "visual_design": 0.25,
-    "description_match": 0.20,
+# Reward composition: 40% deterministic quality, 40% LLM design rubric,
+# and 20% LLM description-match score.
+LLM_RUBRIC_WEIGHTS = {
+    "layout": 0.25,
+    "typography": 0.25,
+    "responsiveness": 0.20,
+    "visual_design": 0.30,
 }
 
 DEFAULT_STATE = {
@@ -30,6 +29,7 @@ DEFAULT_STATE = {
     "reward_history": [],          # list[float], one entry per completed iteration
     "last_rating_json": None,      # dict with "scores" and "deductions" from rater
     "last_deductions": "",         # String explaining why marks were reduced
+    "last_deterministic_evaluation": None,
     "criteria_version": 1,
     "criteria_changelog": ["v1: default"],
     "early_exit": False,
@@ -47,16 +47,16 @@ def init_state() -> dict:
     return state
 
 
-def compute_overall_reward(scores: dict) -> float:
+def compute_overall_reward(scores: dict, deterministic_score: float) -> float:
     """
-    Compute a single 0.0–1.0 reward from the rater's per-dimension scores (each 0–10).
-    Uses fixed weights defined in REWARD_WEIGHTS.
-    Returns 0.0 if scores are missing or malformed.
+    Combine deterministic checks, LLM design quality, and description matching into a 0.0–1.0 reward.
     """
     try:
-        total = sum(scores.get(dim, 0) * weight for dim, weight in REWARD_WEIGHTS.items())
-        return round(total / 10.0, 4)
-    except (TypeError, AttributeError):
+        deterministic_quality = max(0.0, min(10.0, float(deterministic_score))) / 10.0
+        llm_quality = sum(float(scores[dim]) * weight for dim, weight in LLM_RUBRIC_WEIGHTS.items()) / 10.0
+        description_match = max(0.0, min(10.0, float(scores["description_match"]))) / 10.0
+        return round(0.40 * deterministic_quality + 0.40 * llm_quality + 0.20 * description_match, 4)
+    except (KeyError, TypeError, ValueError):
         return 0.0
 
 

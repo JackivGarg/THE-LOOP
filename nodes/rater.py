@@ -6,6 +6,7 @@ Returns structured scores + deductions string.
 
 import os
 from profiles.profile_manager import get_composed_rater_prompt
+from utils.deterministic_evaluator import evaluate_html
 from utils.groq_provider import record_completion_metadata, request_structured_completion
 from utils.retry import call_with_retry
 
@@ -41,6 +42,11 @@ def rate(state: dict) -> dict:
 
     profile_name = state.get("active_profile", "default")
     system_prompt = get_composed_rater_prompt(profile_name)
+    deterministic_evaluation = evaluate_html(
+        html_code,
+        title=state.get("user_input", {}).get("title", ""),
+        description=state.get("user_input", {}).get("description", ""),
+    )
 
     # Call with retry for rate-limit resilience
     raw_rating, completion = call_with_retry(_call_rater, system_prompt, html_code)
@@ -49,6 +55,11 @@ def rate(state: dict) -> dict:
 
     # Update state
     state["last_rating_json"] = clean_rating
-    state["last_deductions"] = clean_rating["deductions"]
+    state["last_deterministic_evaluation"] = deterministic_evaluation
+    deterministic_summary = (
+        f"Deterministic checks: {deterministic_evaluation['score']:.1f}/10. "
+        + ("; ".join(deterministic_evaluation["issues"][:3]) or "No issues found.")
+    )
+    state["last_deductions"] = f"{clean_rating['deductions']}\n\n{deterministic_summary}"
 
     return state

@@ -289,6 +289,7 @@ with left_col:
     reward_placeholder = st.empty()
     graph_placeholder = st.empty()
     deductions_placeholder = st.empty()
+    validation_placeholder = st.empty()
 
     # Show current state if we have data
     if state["reward_history"]:
@@ -313,6 +314,9 @@ with left_col:
                 f'<div class="deductions-box">💬 <b>Rater says:</b><br>{state["last_deductions"]}</div>',
                 unsafe_allow_html=True,
             )
+        evaluation = state.get("last_deterministic_evaluation")
+        if evaluation:
+            validation_placeholder.caption(f"Deterministic quality: {evaluation['score']:.1f}/10")
 
     if state.get("generation_complete"):
         status_placeholder.markdown(
@@ -412,7 +416,10 @@ if generate_clicked and title.strip():
             state = rate(state)
 
             # Compute reward and update history
-            reward = compute_overall_reward(state["last_rating_json"]["scores"])
+            reward = compute_overall_reward(
+                state["last_rating_json"]["scores"],
+                state["last_deterministic_evaluation"]["score"],
+            )
             state["reward_history"].append(reward)
             state["iteration"] += 1
 
@@ -438,6 +445,9 @@ if generate_clicked and title.strip():
                         f'<div class="deductions-box">💬 <b>Rater says:</b><br>{state["last_deductions"]}</div>',
                         unsafe_allow_html=True,
                     )
+                evaluation = state.get("last_deterministic_evaluation")
+                if evaluation:
+                    validation_placeholder.caption(f"Deterministic quality: {evaluation['score']:.1f}/10")
 
         # ── Generation Complete ──
         state["generation_complete"] = True
@@ -548,3 +558,13 @@ if state.get("generation_complete") and state.get("current_code"):
         with stat_cols[3]:
             improvement = state["reward_history"][-1] - state["reward_history"][0] if len(state["reward_history"]) > 1 else 0
             st.metric("Total Improvement", f"{improvement:+.3f}")
+
+        evaluation = state.get("last_deterministic_evaluation")
+        if evaluation:
+            with st.expander("Deterministic validation report"):
+                st.metric("Deterministic quality", f"{evaluation['score']:.1f} / 10")
+                if evaluation["issues"]:
+                    for issue in evaluation["issues"]:
+                        st.write(f"- {issue}")
+                else:
+                    st.success("All deterministic checks passed.")
