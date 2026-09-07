@@ -63,9 +63,10 @@ def update_code(state: dict) -> dict:
         if raw_output.strip().startswith("<!") or raw_output.strip().startswith("<html"):
             html = raw_output.strip()
         else:
-            # If update fails to produce valid HTML, keep the previous version
-            # rather than crashing the entire loop
-            return state
+            raise ValueError("Code Updater did not return a complete HTML document")
+
+    if html.strip() == current_html.strip():
+        raise ValueError("Code Updater returned an unchanged document instead of applying the requested improvements")
 
     state["current_code"] = html
     return state

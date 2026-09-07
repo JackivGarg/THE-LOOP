@@ -51,6 +51,13 @@ def _build_user_message_iter2plus(state: dict) -> str:
     scores = rating.get("scores", {})
     deductions = rating.get("deductions", state.get("last_deductions", ""))
     reward_history = state.get("reward_history", [])
+    deterministic = state.get("last_deterministic_evaluation") or {}
+    deterministic_issues = deterministic.get("issues", [])
+    deterministic_checks = [
+        {"name": check["name"], "score": check["score"], "details": check["details"]}
+        for check in deterministic.get("checks", [])
+        if check["score"] < 1
+    ]
 
     return (
         f"## USER REQUEST (reminder)\n"
@@ -60,11 +67,17 @@ def _build_user_message_iter2plus(state: dict) -> str:
         f"{json.dumps(scores, indent=2)}\n\n"
         f"## RATER DEDUCTIONS\n"
         f"{deductions}\n\n"
+        f"## OBJECTIVE FAILURES TO FIX\n"
+        f"Deterministic score: {deterministic.get('score', 'unavailable')}/10\n"
+        f"Failed or partial checks: {json.dumps(deterministic_checks, indent=2)}\n"
+        f"Issues: {json.dumps(deterministic_issues, indent=2)}\n\n"
         f"## REWARD HISTORY\n"
         f"{reward_history}\n\n"
         f"## YOUR TASK\n"
         f"Analyze the scores above. Identify the 2-3 weakest dimensions. "
         f"Create targeted fix instructions for the code updater. "
+        f"Turn the feedback into concrete, verifiable implementation work. "
+        f"Every round must address at least two specific shortcomings; do not produce a no-op plan. "
         f"Focus only on what needs improvement — do not change what's already good. "
         f"Set action to \"update\"."
     )

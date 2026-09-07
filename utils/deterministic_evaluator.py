@@ -216,6 +216,19 @@ def evaluate_html(html_code: str, *, title: str = "", description: str = "", che
     has_viewport = any("width=device-width" in attrs.get("content", "").replace(" ", "").lower() for attrs in viewport_tags)
     checks.append(_check("responsive_viewport", float(has_viewport), 0.7, "Responsive viewport meta tag present" if has_viewport else "Missing responsive viewport meta tag", [] if has_viewport else ["Add meta viewport with width=device-width"]))
 
+    responsive_markers = re.findall(r"\b(?:sm|md|lg|xl|2xl):", html_code)
+    has_media_query = bool(re.search(r"@media\s*\(", html_code, re.IGNORECASE))
+    responsive_count = len(responsive_markers) + int(has_media_query)
+    responsive_score = 1.0 if has_media_query or len(responsive_markers) >= 2 else 0.5 if responsive_count == 1 else 0.0
+    responsive_issue = [] if responsive_score == 1.0 else ["Add responsive layout rules using Tailwind breakpoints or CSS media queries"]
+    checks.append(_check(
+        "responsive_implementation",
+        responsive_score,
+        0.5,
+        "Multiple responsive layout rules found" if responsive_score == 1.0 else "Responsive behavior is limited or missing",
+        responsive_issue,
+    ))
+
     external_urls = sorted({attrs.get(key, "") for tag, attrs in inspector.tags for key in ("src", "href") if (tag in {"script", "img", "link"}) and attrs.get(key, "").startswith(("http://", "https://"))})
     external_issues: list[str] = []
     if check_external_resources and external_urls:

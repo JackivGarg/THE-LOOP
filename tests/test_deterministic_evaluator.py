@@ -7,7 +7,7 @@ from utils.deterministic_evaluator import evaluate_html
 
 VALID_HTML = """<!DOCTYPE html>
 <html lang="en"><head><title>Developer Portfolio</title>
-<meta name="viewport" content="width=device-width, initial-scale=1"></head>
+<meta name="viewport" content="width=device-width, initial-scale=1"><style>@media (max-width: 640px) { nav { display: none; } }</style></head>
 <body><header><nav>Navigation</nav></header><main>
 <h1>Developer Portfolio</h1><section id="about"><h2>About</h2><p>About the developer.</p></section>
 <section id="projects"><h2>Projects</h2><img src="profile.png" alt="Developer portrait"></section>

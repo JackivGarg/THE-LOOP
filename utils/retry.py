@@ -23,6 +23,7 @@ class RetryExhaustedError(RuntimeError):
             f"Last error: {last_exception}"
         )
         self.metadata = last_exception.metadata
+        self.retry_after_seconds = last_exception.retry_after_seconds
 
 
 def call_with_retry(fn, *args, retry_config: RetryConfig | None = None, **kwargs):
@@ -65,7 +66,12 @@ def call_with_retry(fn, *args, retry_config: RetryConfig | None = None, **kwargs
             if isinstance(e, MalformedStructuredResponseError):
                 wait_time = min(0.25 * (2 ** attempt), 1.0)
             else:
-                wait_time = min(policy.base_delay_seconds * (2 ** attempt), policy.max_delay_seconds)
+                backoff_seconds = policy.base_delay_seconds * (2 ** attempt)
+                provider_delay = e.retry_after_seconds or 0.0
+                # Groq's own wait estimate is more precise than generic backoff.
+                # Add a small cushion so a fractional retry-after does not fail again.
+                wait_time = max(backoff_seconds, provider_delay + 0.25)
+                wait_time = min(wait_time, policy.max_delay_seconds)
             time.sleep(wait_time)
 
     raise RetryExhaustedError(policy.max_attempts, last_exception)

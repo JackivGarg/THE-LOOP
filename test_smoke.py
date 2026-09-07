@@ -59,10 +59,12 @@ s["iteration"] = 3
 assert not should_stop(s), "Should NOT stop at 0.7"
 print("should_stop at 0.7: correctly returns False")
 
-s["reward_history"] = [0.5, 0.6, 0.85]
+s["reward_history"] = [0.5, 0.6, 0.95]
 s["iteration"] = 3
-assert should_stop(s), "Should stop at 0.85 (above threshold)"
-print("should_stop at 0.85: correctly returns True (threshold)")
+s["last_rating_json"] = {"scores": {"layout": 8, "typography": 8, "responsiveness": 8, "visual_design": 8, "description_match": 8}}
+s["last_deterministic_evaluation"] = {"score": 9.5, "issues": []}
+assert should_stop(s), "Should stop at 0.95 after clearing the quality gate"
+print("should_stop at 0.95: correctly returns True (quality gate)")
 
 s2 = init_state()
 s2["reward_history"] = [0.5, 0.6, 0.61]

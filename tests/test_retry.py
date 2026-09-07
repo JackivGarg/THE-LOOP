@@ -3,7 +3,7 @@
 import unittest
 from unittest.mock import patch
 
-from utils.groq_provider import MalformedStructuredResponseError, RetryConfig
+from utils.groq_provider import MalformedStructuredResponseError, RetryConfig, RetryableLLMError
 from utils.retry import call_with_retry
 
 
@@ -31,6 +31,25 @@ class RetryTests(unittest.TestCase):
         self.assertEqual(result, "success")
         self.assertEqual(calls, 2)
         sleep.assert_called_once_with(0.25)
+
+    def test_honors_provider_retry_after_delay(self):
+        calls = 0
+
+        def rate_limited_once():
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise RetryableLLMError("slow down", retry_after_seconds=2.5)
+            return "success"
+
+        with patch("utils.retry.time.sleep") as sleep:
+            result = call_with_retry(
+                rate_limited_once,
+                retry_config=RetryConfig(max_attempts=2, base_delay_seconds=1, max_delay_seconds=30),
+            )
+
+        self.assertEqual(result, "success")
+        sleep.assert_called_once_with(2.75)
 
 
 if __name__ == "__main__":

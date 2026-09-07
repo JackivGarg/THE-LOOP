@@ -22,14 +22,15 @@ DEFAULT_STATE = {
     "active_profile": "default",
     "iteration": 0,
     "max_iterations": 4,
-    "min_iterations": 2,           # Must run at least 2 before early-exit logic activates
-    "quality_threshold": 0.82,
+    "min_iterations": 3,           # Always run three full generate → evaluate → improve rounds.
+    "quality_threshold": 0.90,      # A high bar; basic structural validity is not sufficient.
     "early_exit_delta": 0.02,      # Stop if improvement < this between consecutive iterations
     "current_code": None,          # Raw HTML string, updated every iteration
     "reward_history": [],          # list[float], one entry per completed iteration
     "last_rating_json": None,      # dict with "scores" and "deductions" from rater
     "last_deductions": "",         # String explaining why marks were reduced
     "last_deterministic_evaluation": None,
+    "evaluation_history": [],       # complete deterministic + LLM report for each completed round
     "criteria_version": 1,
     "criteria_changelog": ["v1: default"],
     "early_exit": False,
@@ -60,12 +61,28 @@ def compute_overall_reward(scores: dict, deterministic_score: float) -> float:
         return 0.0
 
 
+def is_quality_ready(state: dict) -> bool:
+    """Return whether a result clears the quality gate, not merely an averaged score."""
+    rating = state.get("last_rating_json") or {}
+    scores = rating.get("scores") or {}
+    deterministic = state.get("last_deterministic_evaluation") or {}
+    try:
+        key_dimensions = ("layout", "typography", "responsiveness", "visual_design", "description_match")
+        return (
+            float(deterministic.get("score", 0)) >= 9.0
+            and not deterministic.get("issues", [])
+            and all(float(scores[dimension]) >= 8.0 for dimension in key_dimensions)
+        )
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
 def should_stop(state: dict) -> bool:
     """
     Determine if the generation loop should stop.
     Three exit conditions:
       1. Max iterations reached
-      2. Quality threshold crossed
+      2. Quality threshold crossed after the minimum number of evaluation rounds
       3. Plateau detected (improvement < delta) — only after min_iterations
     Regressions (negative delta) do NOT trigger early exit — the planner self-corrects.
     """
@@ -73,11 +90,18 @@ def should_stop(state: dict) -> bool:
     if state["iteration"] >= state["max_iterations"]:
         return True
 
-    # Quality threshold met
-    if state["reward_history"] and state["reward_history"][-1] >= state["quality_threshold"]:
+    # A strong first draft still needs to be re-evaluated after targeted improvements.
+    # Checking this before min_iterations was the reason a first score above the
+    # threshold incorrectly ended the loop after a single generation.
+    if (
+        state["iteration"] >= state["min_iterations"]
+        and state["reward_history"]
+        and state["reward_history"][-1] >= state["quality_threshold"]
+        and is_quality_ready(state)
+    ):
         return True
 
-    # Plateau detection — only after minimum iterations to avoid noisy early exits
+    # Plateau detection — only after the required evaluation rounds.
     if state["iteration"] >= state["min_iterations"] and len(state["reward_history"]) >= 2:
         delta = state["reward_history"][-1] - state["reward_history"][-2]
         # Regression → don't exit, let planner fix it

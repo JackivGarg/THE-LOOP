@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import time
 from dataclasses import dataclass
 from functools import lru_cache
@@ -118,6 +119,16 @@ class LLMRequestError(RuntimeError):
 class RetryableLLMError(LLMRequestError):
     """A transient provider or structured-output failure that can be retried."""
 
+    def __init__(
+        self,
+        message: str,
+        *,
+        metadata: LLMResponseMetadata | None = None,
+        retry_after_seconds: float | None = None,
+    ):
+        super().__init__(message, metadata=metadata)
+        self.retry_after_seconds = retry_after_seconds
+
 
 class MalformedStructuredResponseError(RetryableLLMError):
     """A model response that did not satisfy the declared structured contract."""
@@ -194,19 +205,19 @@ def get_completion_settings(task: TaskName) -> CompletionSettings:
     """Return validated generation limits and sampling parameters for a task."""
     defaults: dict[TaskName, CompletionSettings] = {
         "planner": CompletionSettings(
-            temperature=0.2, max_completion_tokens=1024, reasoning_effort="low", requires_strict_json_schema=True
+            temperature=0.2, max_completion_tokens=700, reasoning_effort="low", requires_strict_json_schema=True
         ),
         "code_writer": CompletionSettings(
-            temperature=0.6, max_completion_tokens=5000, top_p=0.8, reasoning_effort="low"
+            temperature=0.5, max_completion_tokens=2400, top_p=0.8, reasoning_effort="none"
         ),
         "code_updater": CompletionSettings(
-            temperature=0.5, max_completion_tokens=5000, top_p=0.8, reasoning_effort="low"
+            temperature=0.4, max_completion_tokens=2400, top_p=0.8, reasoning_effort="none"
         ),
         "rater": CompletionSettings(
-            temperature=0.1, max_completion_tokens=512, reasoning_effort="low", requires_strict_json_schema=True
+            temperature=0.1, max_completion_tokens=320, reasoning_effort="none", requires_strict_json_schema=True
         ),
         "criteria_updater": CompletionSettings(
-            temperature=0.1, max_completion_tokens=512, reasoning_effort="low", requires_strict_json_schema=True
+            temperature=0.1, max_completion_tokens=320, reasoning_effort="none", requires_strict_json_schema=True
         ),
     }
     default = defaults[task]
@@ -263,10 +274,25 @@ def _classify_provider_error(error: Exception) -> LLMRequestError:
     message = str(error)
 
     if status_code in {408, 409, 429, 500, 502, 503, 504}:
-        return RetryableLLMError(message)
+        return RetryableLLMError(message, retry_after_seconds=_retry_after_seconds(error, message))
     if status_code == 400 and "json_validate_failed" in message:
         return MalformedStructuredResponseError(message)
     return PermanentLLMError(message)
+
+
+def _retry_after_seconds(error: Exception, message: str) -> float | None:
+    """Read Groq's rate-limit delay from a header or its human-readable error."""
+    response = getattr(error, "response", None)
+    headers = getattr(response, "headers", {}) if response is not None else {}
+    retry_after = headers.get("retry-after") if headers else None
+    try:
+        if retry_after is not None:
+            return max(0.0, float(retry_after))
+    except (TypeError, ValueError):
+        pass
+
+    match = re.search(r"(?:try again in|retry after)\s+([0-9]+(?:\.[0-9]+)?)\s*(?:s|seconds?)", message, re.IGNORECASE)
+    return float(match.group(1)) if match else None
 
 
 def validate_model_capabilities(model: str, *, requires_strict_json_schema: bool) -> None:
