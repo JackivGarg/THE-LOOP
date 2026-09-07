@@ -4,8 +4,7 @@ Uses the centrally configured Groq criteria-update model.
 Called only when user submits preference feedback after generation.
 """
 
-import os
-from profiles.profile_manager import load_profile, save_profile
+from profiles.profile_manager import criteria_diff, load_profile, save_profile, validate_criteria
 from utils.groq_provider import record_completion_metadata, request_structured_completion
 from utils.retry import call_with_retry
 
@@ -20,7 +19,8 @@ Your job is to:
 2. Add new preferences from the feedback
 3. Modify existing preferences if the feedback contradicts them
 4. Remove preferences if the user explicitly says to
-5. Keep the format as a bulleted list (each line starts with "- ")
+5. Return only the editable criteria bullet list; never add prompt headings, [FIXED]/[EDITABLE] markers, or template instructions
+6. Keep the format as a bulleted list (each line starts with "- ")
 
 Return ONLY a JSON object with:
 {
@@ -78,14 +78,20 @@ def update_criteria(state: dict, user_feedback: str) -> dict:
     record_completion_metadata(state, completion)
 
     # Extract updated criteria
-    updated_criteria = result.updated_criteria
+    updated_criteria = validate_criteria(result.updated_criteria)
     changelog_entry = result.changelog
 
-    # Write back to profile file
-    save_profile(profile_name, updated_criteria)
+    # Persist only the validated editable block as an append-only profile version.
+    profile = save_profile(profile_name, updated_criteria, changelog=changelog_entry, source="criteria_updater")
+    previous_version = profile["current_version"] - 1
+    current_version = profile["current_version"]
 
     # Update state
-    state["criteria_version"] += 1
+    state["criteria_version"] = current_version
     state["criteria_changelog"].append(changelog_entry)
+    state["last_criteria_diff"] = (
+        criteria_diff(profile_name, previous_version, current_version)
+        if previous_version >= 1 else ""
+    )
 
     return state

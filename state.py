@@ -33,6 +33,7 @@ DEFAULT_STATE = {
     "evaluation_history": [],       # complete deterministic + LLM report for each completed round
     "criteria_version": 1,
     "criteria_changelog": ["v1: default"],
+    "last_criteria_diff": "",
     "early_exit": False,
     "generation_complete": False,
     "is_running": False,           # Guards against double-click on Generate

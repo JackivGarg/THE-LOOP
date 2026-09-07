@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "name": "Jackiv Garg",
+  "created_at": "2026-09-07T00:00:00+00:00",
+  "updated_at": "2026-09-07T00:00:00+00:00",
+  "current_version": 1,
+  "versions": [
+    {
+      "version": 1,
+      "criteria": "- First page should be visually appealing with minimal text.\n- Visuals or a watermark can be used to enhance the design.\n- Photos and visuals should be added throughout the site.\n- Background should be white with a yellowish tone.\n- Improve overall site quality.",
+      "changelog": "Migrated from legacy text profile.",
+      "created_at": "2026-09-07T00:00:00+00:00",
+      "source": "migration"
+    }
+  ]
+}

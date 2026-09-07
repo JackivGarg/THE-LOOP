@@ -28,6 +28,10 @@ from profiles.profile_manager import (
     save_profile,
     clone_profile,
     delete_profile,
+    criteria_diff,
+    get_profile_version,
+    list_profile_versions,
+    rollback_profile,
 )
 from utils.reward_graph import build_reward_graph
 from utils.groq_provider import get_provider_config
@@ -273,10 +277,13 @@ with control_col:
                 new_name = st.text_input("Profile name")
                 new_criteria = st.text_area("Criteria (one per line, start with -)")
                 if st.form_submit_button("Create profile") and new_name.strip():
-                    save_profile(new_name.strip(), new_criteria)
-                    state["active_profile"] = new_name.strip()
-                    st.session_state._show_new_profile = False
-                    st.rerun()
+                    try:
+                        save_profile(new_name.strip(), new_criteria, changelog="Created from the profile manager.")
+                        state["active_profile"] = new_name.strip()
+                        st.session_state._show_new_profile = False
+                        st.rerun()
+                    except ValueError as error:
+                        st.error(str(error))
 
         if st.session_state.get("_show_clone_profile", False):
             with st.form("clone_profile_form"):
@@ -289,6 +296,31 @@ with control_col:
                         st.rerun()
                     except (FileExistsError, FileNotFoundError) as error:
                         st.error(str(error))
+
+        try:
+            versions = list_profile_versions(selected_profile)
+            current_version = versions[-1]["version"]
+            version_options = [version["version"] for version in reversed(versions)]
+            viewed_version = st.selectbox(
+                "Saved criteria version",
+                version_options,
+                format_func=lambda version: f"v{version} — {get_profile_version(selected_profile, version)['changelog']}",
+                key=f"profile_version_{selected_profile}",
+            )
+            viewed = get_profile_version(selected_profile, viewed_version)
+            st.caption(f"Saved {viewed['created_at']} · source: {viewed.get('source', 'manual')}")
+            st.code(viewed["criteria"], language="text")
+            if viewed_version < current_version:
+                st.caption("Changes from this version to the current criteria:")
+                st.code(criteria_diff(selected_profile, viewed_version, current_version) or "No text changes.", language="diff")
+                if st.button(f"Restore v{viewed_version}", key=f"restore_{selected_profile}_{viewed_version}"):
+                    restored = rollback_profile(selected_profile, viewed_version)
+                    state["criteria_version"] = restored["current_version"]
+                    state["criteria_changelog"].append(f"v{restored['current_version']}: restored v{viewed_version}")
+                    st.session_state.gen_state = state
+                    st.rerun()
+        except (FileNotFoundError, ValueError) as error:
+            st.error(f"Profile history is unavailable: {error}")
 
     with st.container(border=True):
         st.subheader("Evaluation progress")
@@ -526,6 +558,9 @@ if state.get("generation_complete") and state.get("current_code"):
                     st.success("All deterministic checks passed.")
 
         with st.expander("Refine this result", expanded=False):
+            if state.get("last_criteria_diff"):
+                st.caption("Most recent criteria change")
+                st.code(state["last_criteria_diff"], language="diff")
             feedback_text = st.text_area(
                 "What would you like different?",
                 placeholder="e.g., Make it more minimalist, use darker colors, less gradients...",
