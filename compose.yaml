@@ -1,0 +1,19 @@
+services:
+  loop:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      LOOP_DATABASE_PATH: /app/data/loop.sqlite3
+      LOOP_ORIGINS: ${LOOP_ORIGINS:-http://localhost:8000,http://127.0.0.1:8000}
+      LOOP_SECURE_COOKIES: ${LOOP_SECURE_COOKIES:-false}
+      LOOP_ENABLE_DEMO: ${LOOP_ENABLE_DEMO:-true}
+    volumes:
+      - loop-data:/app/data
+    restart: unless-stopped
+volumes:
+  loop-data:
