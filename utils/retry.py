@@ -5,6 +5,8 @@ Does NOT retry 413 (request too large) — those need prompt/token reduction, no
 """
 
 import time
+from contextlib import contextmanager
+from contextvars import ContextVar
 
 from utils.groq_provider import (
     MalformedStructuredResponseError,
@@ -12,6 +14,21 @@ from utils.groq_provider import (
     RetryableLLMError,
     get_retry_config,
 )
+
+_retry_observer = ContextVar("retry_observer", default=None)
+_retry_cancelled = ContextVar("retry_cancelled", default=None)
+
+
+@contextmanager
+def retry_context(observer, cancelled):
+    """Attach job progress/cancellation without coupling nodes to a web framework."""
+    observer_token = _retry_observer.set(observer)
+    cancelled_token = _retry_cancelled.set(cancelled)
+    try:
+        yield
+    finally:
+        _retry_observer.reset(observer_token)
+        _retry_cancelled.reset(cancelled_token)
 
 
 class RetryExhaustedError(RuntimeError):
@@ -71,7 +88,21 @@ def call_with_retry(fn, *args, retry_config: RetryConfig | None = None, **kwargs
                 # Groq's own wait estimate is more precise than generic backoff.
                 # Add a small cushion so a fractional retry-after does not fail again.
                 wait_time = max(backoff_seconds, provider_delay + 0.25)
-                wait_time = min(wait_time, policy.max_delay_seconds)
-            time.sleep(wait_time)
+                # Never retry earlier than the provider permits. max_delay caps
+                # generic backoff, not an explicit Retry-After value.
+                wait_time = max(min(backoff_seconds, policy.max_delay_seconds), provider_delay + 0.25)
+            observer = _retry_observer.get()
+            if observer:
+                observer(attempt + 1, wait_time)
+            cancellation = _retry_cancelled.get()
+            if cancellation:
+                deadline = time.monotonic() + wait_time
+                while time.monotonic() < deadline:
+                    if cancellation():
+                        from core.pipeline import RunCancelled
+                        raise RunCancelled("Run cancelled during provider cooldown.")
+                    time.sleep(min(0.25, max(0, deadline - time.monotonic())))
+            else:
+                time.sleep(wait_time)
 
     raise RetryExhaustedError(policy.max_attempts, last_exception)

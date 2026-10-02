@@ -63,7 +63,7 @@ def rate(state: dict) -> dict:
         raise ValueError("Cannot rate: no current_code in state")
 
     profile_name = state.get("active_profile", "default")
-    system_prompt = get_composed_rater_prompt(profile_name)
+    system_prompt = get_composed_rater_prompt(profile_name, criteria=state.get("profile_criteria"))
     deterministic_evaluation = evaluate_html(
         html_code,
         title=state.get("user_input", {}).get("title", ""),

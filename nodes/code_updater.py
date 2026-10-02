@@ -60,10 +60,7 @@ def update_code(state: dict) -> dict:
     # Validate and extract HTML
     html = extract_html(raw_output)
     if html is None:
-        if raw_output.strip().startswith("<!") or raw_output.strip().startswith("<html"):
-            html = raw_output.strip()
-        else:
-            raise ValueError("Code Updater did not return a complete HTML document")
+        raise ValueError("Code Updater did not return a complete HTML document")
 
     if html.strip() == current_html.strip():
         raise ValueError("Code Updater returned an unchanged document instead of applying the requested improvements")

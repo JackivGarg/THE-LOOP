@@ -57,13 +57,7 @@ def write_code(state: dict) -> dict:
     if html is None:
         # Fallback: if extraction fails, try using the raw output directly
         # (some models output clean HTML without any wrapping)
-        if raw_output.strip().startswith("<!") or raw_output.strip().startswith("<html"):
-            html = raw_output.strip()
-        else:
-            raise ValueError(
-                "Code Writer produced output that doesn't contain valid HTML. "
-                f"First 200 chars: {raw_output[:200]}"
-            )
+        raise ValueError("Code Writer produced incomplete HTML. Increase the output budget or simplify the brief.")
 
     state["current_code"] = html
     return state

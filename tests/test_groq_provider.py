@@ -38,7 +38,7 @@ class GroqProviderTests(unittest.TestCase):
         self.assertEqual(model, "qwen/qwen3.6-27b")
         self.assertEqual(settings.temperature, 0.2)
         self.assertEqual(settings.max_completion_tokens, 1024)
-        self.assertEqual(settings.reasoning_effort, "none")
+        self.assertEqual(settings.reasoning_effort, "low")
 
     def test_invalid_generation_limit_is_rejected(self):
         with patch.dict(os.environ, {"RATER_MAX_COMPLETION_TOKENS": "0"}, clear=False):

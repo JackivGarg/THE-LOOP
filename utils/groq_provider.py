@@ -208,16 +208,16 @@ def get_completion_settings(task: TaskName) -> CompletionSettings:
             temperature=0.2, max_completion_tokens=700, reasoning_effort="low", requires_strict_json_schema=True
         ),
         "code_writer": CompletionSettings(
-            temperature=0.5, max_completion_tokens=2400, top_p=0.8, reasoning_effort="none"
+            temperature=0.5, max_completion_tokens=4000, top_p=0.8, reasoning_effort="low"
         ),
         "code_updater": CompletionSettings(
-            temperature=0.4, max_completion_tokens=2400, top_p=0.8, reasoning_effort="none"
+            temperature=0.4, max_completion_tokens=4000, top_p=0.8, reasoning_effort="low"
         ),
         "rater": CompletionSettings(
-            temperature=0.1, max_completion_tokens=320, reasoning_effort="none", requires_strict_json_schema=True
+            temperature=0.1, max_completion_tokens=1000, reasoning_effort="low", requires_strict_json_schema=True
         ),
         "criteria_updater": CompletionSettings(
-            temperature=0.1, max_completion_tokens=320, reasoning_effort="none", requires_strict_json_schema=True
+            temperature=0.1, max_completion_tokens=1000, reasoning_effort="low", requires_strict_json_schema=True
         ),
     }
     default = defaults[task]
@@ -234,9 +234,9 @@ def get_completion_settings(task: TaskName) -> CompletionSettings:
 def get_retry_config() -> RetryConfig:
     """Load a single retry policy used by every pipeline node."""
     return RetryConfig(
-        max_attempts=_positive_int("GROQ_MAX_RETRY_ATTEMPTS", 3),
+        max_attempts=_positive_int("GROQ_MAX_RETRY_ATTEMPTS", 4),
         base_delay_seconds=_positive_float("GROQ_RETRY_BASE_DELAY_SECONDS", 2),
-        max_delay_seconds=_positive_float("GROQ_RETRY_MAX_DELAY_SECONDS", 30),
+        max_delay_seconds=_positive_float("GROQ_RETRY_MAX_DELAY_SECONDS", 120),
     )
 
 
@@ -349,8 +349,9 @@ def request_completion(task: TaskName, messages: list[dict[str, str]]) -> LLMCom
         "messages": messages,
         "temperature": settings.temperature,
         "max_completion_tokens": settings.max_completion_tokens,
-        "reasoning_effort": settings.reasoning_effort,
     }
+    if model.startswith("openai/gpt-oss"):
+        request_kwargs["reasoning_effort"] = settings.reasoning_effort
     if settings.top_p is not None:
         request_kwargs["top_p"] = settings.top_p
     if settings.requires_strict_json_schema:
@@ -382,6 +383,11 @@ def request_completion(task: TaskName, messages: list[dict[str, str]]) -> LLMCom
         total_tokens=getattr(usage, "total_tokens", None),
         raw_content=raw_content,
     )
+    if choice.finish_reason == "length":
+        raise PermanentLLMError(
+            f"{task} exceeded its output token budget. Increase {task.upper()}_MAX_COMPLETION_TOKENS or shorten the brief.",
+            metadata=metadata,
+        )
     return LLMCompletion(content=raw_content, metadata=metadata)
 
 

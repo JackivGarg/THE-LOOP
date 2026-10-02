@@ -59,9 +59,4 @@ def extract_html(raw_output: str) -> str | None:
     if match:
         return "<!DOCTYPE html>\n" + match.group(1).strip()
 
-    # Last resort: if the cleaned output looks like it starts with a tag, return as-is
-    stripped = cleaned.strip()
-    if stripped.startswith('<') and stripped.endswith('>'):
-        return stripped
-
     return None

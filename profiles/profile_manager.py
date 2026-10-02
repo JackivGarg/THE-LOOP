@@ -237,8 +237,9 @@ def delete_profile(name: str) -> None:
         raise FileNotFoundError(f"Profile '{normalized_name}' was not found.")
 
 
-def get_composed_rater_prompt(profile_name: str) -> str:
+def get_composed_rater_prompt(profile_name: str, *, criteria: str | None = None) -> str:
     """Inject the editable criteria block into the immutable rater template."""
     with open(_RATER_TEMPLATE_PATH, "r", encoding="utf-8") as file:
         template = file.read()
-    return template.replace("{{editable_block}}", load_profile(profile_name))
+    editable = load_profile(profile_name) if criteria is None else validate_criteria(criteria)
+    return template.replace("{{editable_block}}", editable)

@@ -25,10 +25,12 @@ def _build_user_message_iter1(state: dict) -> str:
     description = state["user_input"]["description"]
     profile_name = state.get("active_profile", "default")
 
-    try:
-        criteria = load_profile(profile_name)
-    except FileNotFoundError:
-        criteria = load_profile("default")
+    criteria = state.get("profile_criteria")
+    if criteria is None:
+        try:
+            criteria = load_profile(profile_name)
+        except FileNotFoundError:
+            criteria = load_profile("default")
 
     return (
         f"## USER REQUEST\n"
