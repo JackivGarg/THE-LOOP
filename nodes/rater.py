@@ -68,6 +68,7 @@ def rate(state: dict) -> dict:
         html_code,
         title=state.get("user_input", {}).get("title", ""),
         description=state.get("user_input", {}).get("description", ""),
+        check_external_resources=state.get("check_external_resources", True),
     )
 
     # Call with retry for rate-limit resilience
